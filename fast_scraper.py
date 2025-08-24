@@ -101,7 +101,206 @@ class FastHackathonScraper:
         
         return hackathons
     
-    def scrape_mlh_fast(self):
+    def scrape_unstop_fast(self):
+        """Fast Unstop scraping - improved targeting"""
+        hackathons = []
+        try:
+            print("🔍 Unstop scraping...")
+            self.driver.get("https://unstop.com/hackathons")
+            time.sleep(3)  # Unstop needs more time to load
+            
+            # Unstop uses specific selectors
+            selectors_to_try = [
+                "div[class*='opportunity-card']",
+                "div[class*='competition-card']", 
+                "div[class*='card']",
+                "article",
+                "a[href*='/hackathons/']"
+            ]
+            
+            cards = []
+            for selector in selectors_to_try:
+                try:
+                    found = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    cards.extend(found)
+                except:
+                    continue
+            
+            # Remove duplicates
+            cards = list(set(cards))
+            print(f"Found {len(cards)} Unstop elements")
+            
+            for card in cards[:8]:  # Check more cards for Unstop
+                try:
+                    # Get title - Unstop uses various structures
+                    title = ""
+                    title_selectors = ["h3", "h2", "h4", ".title", "[class*='title']", "a"]
+                    
+                    for selector in title_selectors:
+                        try:
+                            title_elem = card.find_element(By.CSS_SELECTOR, selector)
+                            title = title_elem.text.strip()
+                            if len(title) > 8:
+                                break
+                        except:
+                            continue
+                    
+                    if not title:
+                        title = card.text.strip()
+                        # Extract first meaningful line
+                        lines = [line.strip() for line in title.split('\n') if line.strip()]
+                        for line in lines:
+                            if len(line) > 8 and len(line) < 100:
+                                title = line
+                                break
+                    
+                    if len(title) < 8 or len(title) > 150:
+                        continue
+                    
+                    # Must have hackathon keywords for Unstop
+                    hackathon_keywords = ['hackathon', 'hack', 'coding', 'tech', 'innovation', 'challenge', 'competition']
+                    if not any(keyword in title.lower() for keyword in hackathon_keywords):
+                        continue
+                    
+                    # Skip navigation items
+                    skip_terms = ['browse', 'explore', 'filter', 'sort', 'view all', 'see more', 'login', 'signup']
+                    if any(term in title.lower() for term in skip_terms):
+                        continue
+                    
+                    # Get URL
+                    url = ""
+                    try:
+                        link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                        url = link_elem.get_attribute('href')
+                    except:
+                        try:
+                            url = card.get_attribute('href')
+                        except:
+                            continue
+                    
+                    if url and ('/hackathons/' in url or '/competitions/' in url):
+                        if not url.startswith('http'):
+                            url = f"https://unstop.com{url}"
+                        
+                        hackathons.append({
+                            'title': title,
+                            'url': url,
+                            'source': 'Unstop',
+                            'date_info': 'Check Unstop for dates',
+                            'description': f'🚀 {title}\nUnstop\n📅 Date: Check Unstop for dates\n📝 Live from Unstop.com\n🔗 {url}\n#Hackathon #Competition #Tech #Coding'
+                        })
+                        print(f"✅ Found: {title}")
+                        
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            print(f"Unstop error: {e}")
+        
+        return hackathons
+
+    def scrape_devfolio_fast(self):
+        """Fast DevFolio scraping - new addition"""
+        hackathons = []
+        try:
+            print("🔍 DevFolio scraping...")
+            self.driver.get("https://devfolio.co/hackathons")
+            time.sleep(3)
+            
+            # DevFolio specific selectors
+            selectors_to_try = [
+                "div[class*='hackathon']",
+                "div[class*='event']",
+                "div[class*='card']",
+                "article",
+                "a[href*='/hackathons/']",
+                ".hackathon-card",
+                "[data-testid*='hackathon']"
+            ]
+            
+            cards = []
+            for selector in selectors_to_try:
+                try:
+                    found = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    cards.extend(found)
+                except:
+                    continue
+            
+            cards = list(set(cards))
+            print(f"Found {len(cards)} DevFolio elements")
+            
+            for card in cards[:8]:
+                try:
+                    # Get title
+                    title = ""
+                    title_selectors = ["h1", "h2", "h3", "h4", ".title", "[class*='title']", "a"]
+                    
+                    for selector in title_selectors:
+                        try:
+                            title_elem = card.find_element(By.CSS_SELECTOR, selector)
+                            title = title_elem.text.strip()
+                            if len(title) > 8:
+                                break
+                        except:
+                            continue
+                    
+                    if not title:
+                        title = card.text.strip()
+                        # Extract meaningful title from text
+                        lines = [line.strip() for line in title.split('\n') if line.strip()]
+                        for line in lines:
+                            if len(line) > 8 and len(line) < 100:
+                                # Check if this line looks like a title
+                                if any(word in line.lower() for word in ['hack', 'tech', 'code', 'innovation', '2024', '2025']):
+                                    title = line
+                                    break
+                    
+                    if len(title) < 8 or len(title) > 120:
+                        continue
+                    
+                    # Must have hackathon indicators
+                    hackathon_keywords = ['hackathon', 'hack', 'tech', 'code', 'innovation', 'challenge', 'fest']
+                    if not any(keyword in title.lower() for keyword in hackathon_keywords):
+                        continue
+                    
+                    # Skip generic terms
+                    skip_terms = ['hackathons', 'browse', 'explore', 'devfolio', 'see all', 'view more']
+                    if any(term in title.lower() for term in skip_terms):
+                        continue
+                    
+                    # Get URL
+                    url = ""
+                    try:
+                        link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                        url = link_elem.get_attribute('href')
+                    except:
+                        try:
+                            url = card.get_attribute('href')
+                        except:
+                            continue
+                    
+                    if url:
+                        if not url.startswith('http'):
+                            url = f"https://devfolio.co{url}"
+                        
+                        # Validate it's a hackathon URL
+                        if '/hackathons/' in url or 'devfolio.co' in url:
+                            hackathons.append({
+                                'title': title,
+                                'url': url,
+                                'source': 'DevFolio',
+                                'date_info': 'Check DevFolio for dates',
+                                'description': f'🚀 {title}\nDevFolio\n📅 Date: Check DevFolio for dates\n📝 Live from DevFolio.co\n🔗 {url}\n#Hackathon #Competition #Tech #Coding'
+                            })
+                            print(f"✅ Found: {title}")
+                        
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            print(f"DevFolio error: {e}")
+        
+        return hackathons
         """Fast MLH scraping"""
         hackathons = []
         try:
@@ -205,13 +404,17 @@ class FastHackathonScraper:
         
         all_hackathons = []
         
-        # Scrape DevPost (this was working well)
+        # Scrape DevPost (working well)
         devpost_hackathons = self.scrape_devpost_fast()
         all_hackathons.extend(devpost_hackathons)
         
-        # Scrape MLH
-        mlh_hackathons = self.scrape_mlh_fast()
-        all_hackathons.extend(mlh_hackathons)
+        # Scrape Unstop (improved)
+        unstop_hackathons = self.scrape_unstop_fast()
+        all_hackathons.extend(unstop_hackathons)
+        
+        # Scrape DevFolio (new)
+        devfolio_hackathons = self.scrape_devfolio_fast()
+        all_hackathons.extend(devfolio_hackathons)
         
         if self.driver:
             self.driver.quit()
