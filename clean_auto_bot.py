@@ -9,6 +9,10 @@ import subprocess
 import logging
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Setup logging without emojis
 logging.basicConfig(
@@ -25,11 +29,8 @@ def run_live_scraping():
     try:
         logging.info("Starting scheduled live scraping...")
         
-        # Run live scraper
-        python_path = r"C:/Users/grove/telegram-hackathon-bot/.venv/Scripts/python.exe"
-        script_path = r"C:/Users/grove/telegram-hackathon-bot/live_scraper.py"
-        
-        result = subprocess.run([python_path, script_path], 
+        # Run live scraper using Python in PATH
+        result = subprocess.run(["python", "live_scraper.py"], 
                               capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
@@ -50,10 +51,7 @@ def run_comprehensive_scraping():
     try:
         logging.info("Starting scheduled comprehensive scraping...")
         
-        python_path = r"C:/Users/grove/telegram-hackathon-bot/.venv/Scripts/python.exe"
-        script_path = r"C:/Users/grove/telegram-hackathon-bot/comprehensive_scraper.py"
-        
-        result = subprocess.run([python_path, script_path], 
+        result = subprocess.run(["python", "comprehensive_scraper.py"], 
                               capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
@@ -69,10 +67,7 @@ def post_unposted():
     try:
         logging.info("Checking for unposted hackathons...")
         
-        python_path = r"C:/Users/grove/telegram-hackathon-bot/.venv/Scripts/python.exe"
-        script_path = r"C:/Users/grove/telegram-hackathon-bot/simple_poster.py"
-        
-        result = subprocess.run([python_path, script_path], 
+        result = subprocess.run(["python", "simple_poster.py"], 
                               capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
