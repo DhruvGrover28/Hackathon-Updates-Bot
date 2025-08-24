@@ -205,9 +205,14 @@ class RobustHackathonScraper:
                     db = Database()
                     new_count = 0
                     
-                    for hackathon in hackathons:
-                        if db.add_hackathon(hackathon):
-                            new_count += 1
+                for hackathon in hackathons:
+                    if db.add_hackathon(
+                        title=hackathon['title'],
+                        url=hackathon['link'],
+                        date_info=hackathon['deadline'],
+                        description=f"Source: {hackathon['source']}"
+                    ):
+                        new_count += 1
                     
                     print(f"💾 Added {new_count} new hackathons to database")
                     
