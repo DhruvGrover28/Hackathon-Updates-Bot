@@ -1,4 +1,5 @@
 # Use Python base image with Selenium support
+# Updated: Fix render deployment to use fast_scraper.py (not robust_scraper.py)
 FROM python:3.11-slim
 
 # Install system dependencies for Chrome and Selenium
