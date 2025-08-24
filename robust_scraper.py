@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Robust scraper - Tries Selenium first, falls back to requests gracefully
+Fixed version with proper error handling and structure
 """
 
 import requests
 from bs4 import BeautifulSoup
 import logging
 from database import Database
-from telegram_bot import TelegramBot
 import os
 from dotenv import load_dotenv
 import time
-import re
-import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -97,12 +96,9 @@ class RobustHackathonScraper:
     
     def scrape_with_requests_fallback(self):
         """Fallback requests-only scraping"""
-        all_hackathons = []
-        
         try:
             print("🔄 Using requests-only fallback mode...")
             
-            # Try a different approach - look for hackathon APIs or RSS feeds
             hackathons = []
             
             # Method 1: Try hackathon aggregator sites
@@ -119,7 +115,6 @@ class RobustHackathonScraper:
                         if 'json' in response.headers.get('content-type', ''):
                             data = response.json()
                             print(f"✅ Found API data from {url}")
-                            # Process API data here
                         else:
                             print(f"📄 Got HTML from {url}")
                 except Exception as e:
@@ -155,7 +150,7 @@ class RobustHackathonScraper:
             except Exception as e:
                 print(f"❌ MLH scraping failed: {e}")
             
-            # Method 3: Add some known active hackathons as backup
+            # Method 3: Add backup hackathon sources
             if len(hackathons) == 0:
                 backup_hackathons = [
                     {
@@ -186,6 +181,53 @@ class RobustHackathonScraper:
             print(f"❌ Fallback scraping failed: {e}")
             return []
     
+    def send_telegram_notifications(self, hackathons):
+        """Send notifications to Telegram"""
+        try:
+            load_dotenv()
+            bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+            channel_id = os.getenv('TELEGRAM_CHANNEL_ID')
+            
+            if not bot_token or not channel_id:
+                print("❌ Telegram credentials not found")
+                return
+            
+            print(f"📤 Sending {len(hackathons)} notifications to {channel_id}")
+            
+            for hackathon in hackathons:
+                message = f"""🚀 *New Hackathon Alert!*
+
+*{hackathon['title']}*
+
+📅 *Deadline:* {hackathon['deadline']}
+🌐 *Source:* {hackathon['source']}
+🔗 *Link:* {hackathon['link']}
+
+Join now and start building! 💻"""
+                
+                # Send via Telegram API directly
+                telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                data = {
+                    'chat_id': channel_id,
+                    'text': message,
+                    'parse_mode': 'Markdown',
+                    'disable_web_page_preview': True
+                }
+                
+                try:
+                    response = requests.post(telegram_url, data=data, timeout=10)
+                    if response.status_code == 200:
+                        print(f"✅ Sent notification for: {hackathon['title']}")
+                    else:
+                        print(f"❌ Failed to send notification: {response.text}")
+                except Exception as e:
+                    print(f"❌ Error sending to Telegram: {e}")
+                
+                time.sleep(1)  # Rate limiting
+                
+        except Exception as e:
+            print(f"❌ Error in Telegram notifications: {e}")
+    
     def run_robust_scraping(self):
         """Run scraping with Selenium first, fallback to requests"""
         try:
@@ -204,46 +246,24 @@ class RobustHackathonScraper:
                     # Save to database
                     db = Database()
                     new_count = 0
+                    newly_added = []
                     
-                for hackathon in hackathons:
-                    if db.add_hackathon(
-                        title=hackathon['title'],
-                        url=hackathon['link'],
-                        date_info=hackathon['deadline'],
-                        description=f"Source: {hackathon['source']}"
-                    ):
-                        new_count += 1
+                    # Process each hackathon
+                    for hackathon in hackathons:
+                        if db.add_hackathon(
+                            title=hackathon['title'],
+                            url=hackathon['link'],
+                            date_info=hackathon['deadline'],
+                            description=f"Source: {hackathon['source']}"
+                        ):
+                            new_count += 1
+                            newly_added.append(hackathon)
                     
                     print(f"💾 Added {new_count} new hackathons to database")
                     
-                    # Send to Telegram if new hackathons found
+                    # Send notifications for new hackathons only
                     if new_count > 0:
-                        load_dotenv()
-                        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-                        channel_id = os.getenv('TELEGRAM_CHANNEL_ID')
-                        
-                        if bot_token and channel_id:
-                            bot = TelegramBot(bot_token)
-                            recent_hackathons = db.get_recent_hackathons(limit=new_count)
-                            
-                            for hackathon in recent_hackathons:
-                                message = f"""
-🚀 **New Hackathon Alert!**
-
-**{hackathon['title']}**
-
-📅 **Deadline:** {hackathon['deadline']}
-🌐 **Source:** {hackathon['source']}
-🔗 **Link:** {hackathon['link']}
-
-Join now and start building! 💻
-"""
-                                success = bot.send_message(channel_id, message)
-                                if success:
-                                    print(f"📤 Sent notification for: {hackathon['title']}")
-                                time.sleep(1)
-                        else:
-                            print("❌ Telegram credentials not found")
+                        self.send_telegram_notifications(newly_added)
                     else:
                         print("ℹ️ No new hackathons to notify about")
                 else:
