@@ -211,32 +211,41 @@ class FastHackathonScraper:
                     if not any(keyword in title.lower() for keyword in hackathon_keywords):
                         continue
                     
-                    # Try to get URL
+                    # Try to get URL - prioritize actual href attributes
                     url = ""
                     try:
                         # Check if the card itself is a link
                         url = card.get_attribute('href')
                         if not url:
                             # Look for a link inside the card
-                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                            link_elem = card.find_element(By.CSS_SELECTOR, "a[href*='/hackathons/']")
                             url = link_elem.get_attribute('href')
+                        
+                        # If still no URL, try any link in the card
+                        if not url:
+                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                            href = link_elem.get_attribute('href')
+                            # Only use if it's actually a hackathon/competition URL
+                            if href and ('/hackathons/' in href or '/competitions/' in href):
+                                url = href
                     except:
-                        # If no direct link, try to construct from card attributes
+                        # Last resort: try to find any valid link in the card text
                         try:
-                            classes = card.get_attribute('class')
-                            if 'opp_' in classes:
-                                # Extract opportunity ID (e.g., opp_1544012)
-                                import re
-                                match = re.search(r'opp_(\d+)', classes)
-                                if match:
-                                    opp_id = match.group(1)
-                                    # This might be the pattern for Unstop URLs
-                                    url = f"https://unstop.com/hackathons/opportunity_{opp_id}"
+                            links = card.find_elements(By.CSS_SELECTOR, "a[href]")
+                            for link in links:
+                                href = link.get_attribute('href')
+                                if href and ('/hackathons/' in href or '/competitions/' in href):
+                                    url = href
+                                    break
                         except:
                             pass
                     
-                    # If still no URL, skip this card
+                    # If still no URL, skip this card (don't construct fake URLs)
                     if not url:
+                        continue
+                    
+                    # Skip URLs with 'opportunity_' pattern as they often return 404
+                    if '/opportunity_' in url:
                         continue
                     
                     if not url.startswith('http'):
