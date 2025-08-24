@@ -1,1 +1,1 @@
-worker: python clean_auto_bot.py
+web: python render_bot.py
