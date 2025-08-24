@@ -36,7 +36,7 @@
 - `Procfile` - Heroku deployment
 - `quick_start.bat` - Windows setup script
 - `deployment/github-actions.yml` - GitHub Actions workflow
-- `deployment/railway-deployment.md` - Railway platform guide  
+- `deployment/render-deployment.md` - Render platform guide  
 - `deployment/pythonanywhere-deployment.md` - PythonAnywhere guide
 - `deployment/cron-script.sh` - Linux cron job script
 
@@ -50,11 +50,11 @@
 ### **Free Tiers:**
 1. **GitHub Actions** - Completely free with usage limits
 2. **PythonAnywhere** - Free tier with 1 scheduled task
-3. **Railway** - Free tier available
+3. **Render** - Free tier available
 
 ### **Low-Cost ($5-10/month):**
 1. **PythonAnywhere Hacker Plan** - $5/month
-2. **Railway Hobby Plan** - $5/month  
+2. **Render Web Service** - $7/month  
 3. **VPS with cron** - $5-10/month
 
 ### **Self-Hosted:**

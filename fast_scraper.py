@@ -37,9 +37,11 @@ class FastHackathonScraper:
         self.selenium_available = False
     
     def setup_selenium(self):
-        """Quick Selenium setup with cloud fallback"""
+        """Quick Selenium setup with cloud fallback and Docker support"""
         try:
             chrome_options = Options()
+            
+            # Basic headless settings
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
@@ -49,14 +51,51 @@ class FastHackathonScraper:
             chrome_options.add_argument("--log-level=3")
             chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
             
-            service = Service(ChromeDriverManager().install())
+            # User data directory for containers (only if in actual container)
+            import os
+            import platform
+            
+            # Better container detection - only detect actual containers
+            is_container = (os.path.exists('/.dockerenv') or 
+                          os.environ.get('RENDER') or
+                          os.environ.get('RAILWAY_ENVIRONMENT') or
+                          platform.system() == 'Linux' and os.path.exists('/app/chrome-data'))
+            
+            if is_container:
+                # Additional container-specific flags for heavy restrictions
+                chrome_options.add_argument("--disable-software-rasterizer")
+                chrome_options.add_argument("--disable-background-timer-throttling")
+                chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+                chrome_options.add_argument("--disable-renderer-backgrounding")
+                chrome_options.add_argument("--disable-features=TranslateUI")
+                chrome_options.add_argument("--disable-extensions")
+                chrome_options.add_argument("--disable-plugins")
+                chrome_options.add_argument("--disable-images")
+                chrome_options.add_argument("--memory-pressure-off")
+                chrome_options.add_argument("--max_old_space_size=4096")
+                chrome_options.add_argument("--single-process")
+                chrome_options.add_argument("--user-data-dir=/app/chrome-data")
+                
+                # Container-specific setup
+                if os.environ.get('CHROME_BIN'):
+                    chrome_options.binary_location = os.environ.get('CHROME_BIN')
+                if os.environ.get('CHROMEDRIVER_PATH'):
+                    service = Service(os.environ.get('CHROMEDRIVER_PATH'))
+                else:
+                    service = Service()
+                print("🐳 Docker/Container mode detected")
+            else:
+                # Local development setup - use ChromeDriverManager with minimal flags
+                service = Service(ChromeDriverManager().install())
+                print("🚀 Using Selenium mode (local/full features)")
+            
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.selenium_available = True
-            print("✅ Selenium ready")
+            print("✅ Selenium ready with Docker support")
             return True
         except Exception as e:
-            print(f"❌ Selenium failed (cloud environment): {e}")
-            print("🔄 Switching to requests-only cloud mode...")
+            print(f"❌ Selenium failed: {e}")
+            print("🔄 Switching to requests-only fallback mode...")
             self.selenium_available = False
             return False
     

@@ -97,11 +97,11 @@ python comprehensive_scraper.py
 
 ## Deployment
 
-### Railway (Recommended)
+### Render (Recommended)
 
-1. Create account at railway.app
+1. Create account at render.com
 2. Connect your GitHub repository
-3. Add environment variables in Railway dashboard
+3. Add environment variables in Render dashboard
 4. Deploy automatically from main branch
 
 ### Heroku

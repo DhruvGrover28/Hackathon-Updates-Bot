@@ -49,7 +49,7 @@ telegram-hackathon-bot/
 ├── Procfile                 # Heroku deployment
 └── deployment/              # Deployment configurations
     ├── github-actions.yml   # GitHub Actions workflow
-    ├── railway-deployment.md # Railway platform guide
+    ├── render-deployment.md # Render platform guide
     ├── pythonanywhere-deployment.md # PythonAnywhere guide
     └── cron-script.sh       # Linux cron job script
 ```
@@ -122,10 +122,10 @@ python main.py
 - **Schedule**: Every 6 hours
 - **Cost**: Free (limited) or $5/month
 
-### Option 2: Railway (Free/Paid)
+### Option 2: Render (Free/Paid)
 - **Setup**: Connect GitHub repo, add environment variables
 - **Auto-deployment**: Pushes trigger deployments
-- **Cost**: Free tier available, $5/month for always-on
+- **Cost**: Free tier available, $7/month for always-on
 
 ### Option 3: GitHub Actions (Free)
 - **Setup**: Add workflow file to `.github/workflows/`
@@ -294,16 +294,16 @@ python main.py once
 ### Free Options:
 - **GitHub Actions**: Free (with limits)
 - **PythonAnywhere**: Free tier available
-- **Railway**: Free tier available
+- **Render**: Free tier available
 
 ### Low-Cost Options:
 - **PythonAnywhere Hacker**: $5/month
-- **Railway Hobby**: $5/month
+- **Render Web Service**: $7/month
 - **DigitalOcean Droplet**: $6/month
 - **AWS t2.micro**: ~$8/month
 
 ### Recommended for Production:
-- **Railway Hobby Plan**: $5/month (easiest setup)
+- **Render Web Service**: $7/month (easiest setup)
 - **PythonAnywhere Hacker**: $5/month (good for Python)
 - **VPS with cron**: $5-10/month (full control)
 
