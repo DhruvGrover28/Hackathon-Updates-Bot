@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Render Web Service compatible bot with health check endpoint and environment validation
+"""
+
+import time
+import schedule
+import subprocess
+import logging
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Load environment variables
+load_dotenv()
+
+# Setup logging without emojis
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('auto_bot.log'),
+        logging.StreamHandler()
+    ]
+)
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        """Handle GET requests for health check"""
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Hackathon Bot is running!')
+    
+    def log_message(self, format, *args):
+        """Override to reduce HTTP logging noise"""
+        pass
+
+def start_health_server():
+    """Start HTTP server for Render health checks"""
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logging.info(f"Health check server started on port {port}")
+    server.serve_forever()
+
+def run_live_scraping():
+    """Run the robust scraper (tries Selenium, falls back gracefully)"""
+    try:
+        logging.info("Starting scheduled robust scraping...")
+        result = subprocess.run(
+            ["python", "robust_scraper.py"],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logging.info("Robust scraping completed successfully")
+            if result.stdout:
+                logging.info(f"Scraper output: {result.stdout}")
+        else:
+            logging.error(f"Robust scraping failed with return code {result.returncode}")
+            if result.stderr:
+                logging.error(f"Error output: {result.stderr}")
+                
+    except subprocess.TimeoutExpired:
+        logging.error("Robust scraping timed out after 5 minutes")
+    except Exception as e:
+        logging.error(f"Error running robust scraping: {e}")
+
+def run_telegram_posting():
+    """Run the telegram bot to post new hackathons"""
+    try:
+        logging.info("Starting telegram posting...")
+        result = subprocess.run(
+            ["python", "telegram_bot.py"],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            logging.info("Telegram posting completed successfully")
+            if result.stdout:
+                logging.info(f"Telegram output: {result.stdout}")
+        else:
+            logging.error(f"Telegram posting failed with return code {result.returncode}")
+            if result.stderr:
+                logging.error(f"Error output: {result.stderr}")
+                
+    except subprocess.TimeoutExpired:
+        logging.error("Telegram posting timed out after 2 minutes")
+    except Exception as e:
+        logging.error(f"Error running telegram posting: {e}")
+
+def daily_comprehensive_search():
+    """Run comprehensive search once per day"""
+    try:
+        logging.info("Starting daily comprehensive search...")
+        
+        # Run scraping
+        run_live_scraping()
+        
+        # Wait a bit between operations
+        time.sleep(5)
+        
+        # Run telegram posting
+        run_telegram_posting()
+        
+        logging.info("Daily comprehensive search completed")
+        
+    except Exception as e:
+        logging.error(f"Error in daily comprehensive search: {e}")
+
+def main():
+    """Main function to run the scheduled bot"""
+    try:
+        # Start health check server in background thread
+        health_thread = threading.Thread(target=start_health_server, daemon=True)
+        health_thread.start()
+        
+        logging.info("Hackathon Bot starting up...")
+        
+        # Check required environment variables
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        channel_id = os.getenv('TELEGRAM_CHANNEL_ID')
+        
+        if not bot_token:
+            logging.error("TELEGRAM_BOT_TOKEN environment variable is required!")
+            logging.error("Please add TELEGRAM_BOT_TOKEN in Render dashboard")
+            return
+        if not channel_id:
+            logging.error("TELEGRAM_CHANNEL_ID environment variable is required!")
+            logging.error("Please add TELEGRAM_CHANNEL_ID in Render dashboard")
+            return
+            
+        logging.info(f"Telegram Channel: {channel_id}")
+        logging.info("Environment variables loaded successfully")
+        
+        # Schedule the comprehensive search every 6 hours
+        schedule.every(6).hours.do(daily_comprehensive_search)
+        
+        # Run initial search (with error handling)
+        logging.info("Running initial cloud-compatible search...")
+        try:
+            daily_comprehensive_search()
+        except Exception as e:
+            logging.error(f"Initial search failed: {e}")
+            logging.info("Continuing with scheduled operations anyway...")
+        
+        # Keep the bot running
+        logging.info("Bot is now running. Waiting for scheduled tasks...")
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+            
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user")
+    except Exception as e:
+        logging.error(f"Fatal error: {e}")
+        # Don't raise - keep running for health checks
+        logging.info("Attempting to continue despite error...")
+
+if __name__ == "__main__":
+    main()

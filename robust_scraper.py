@@ -89,37 +89,310 @@ class RobustHackathonScraper:
                 return False
             
             hackathons = []
+            start_time = time.time()
+            timeout = 300  # 5 minutes max
             
             # Scrape Unstop with Selenium
             try:
+                print("🔍 Scraping Unstop with Selenium...")
                 self.driver.get("https://unstop.com/hackathons")
-                time.sleep(3)
+                time.sleep(2)  # Reduced wait time
                 
-                # Look for hackathon cards
-                cards = self.driver.find_elements(By.CSS_SELECTOR, "[class*='card'], [class*='competition'], [class*='opportunity']")
+                # Wait for content to load and try multiple selectors
+                hackathon_selectors = [
+                    "div[class*='card']",
+                    "div[class*='competition']", 
+                    "div[class*='opportunity']",
+                    "article",
+                    "a[href*='/hackathons/']",
+                    "div[class*='list-item']"
+                ]
                 
-                for card in cards[:10]:  # Limit to avoid too many
+                cards = []
+                for selector in hackathon_selectors:
                     try:
-                        title_elem = card.find_element(By.CSS_SELECTOR, "h3, h2, .title, [class*='title']")
-                        title = title_elem.text.strip()
+                        found = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if found:
+                            cards.extend(found)
+                            print(f"Found {len(found)} elements with selector: {selector}")
+                    except:
+                        continue
+                
+                # Remove duplicates
+                cards = list(set(cards))
+                print(f"Total unique elements found: {len(cards)}")
+                
+                for card in cards[:15]:  # Check more cards
+                    try:
+                        # Try multiple ways to get title text
+                        title = ""
+                        title_selectors = ["h1", "h2", "h3", "h4", ".title", "[class*='title']", "a"]
                         
-                        if len(title) > 10 and not any(skip in title.lower() for skip in ['join', 'participate', 'explore']):
+                        for t_sel in title_selectors:
+                            try:
+                                title_elem = card.find_element(By.CSS_SELECTOR, t_sel)
+                                title = title_elem.text.strip()
+                                if len(title) > 5:
+                                    break
+                            except:
+                                continue
+                        
+                        if not title:
+                            title = card.text.strip()
+                        
+                        if len(title) < 5 or len(title) > 200:
+                            continue
+                        
+                        # Better filtering for real hackathons
+                        skip_terms = ['join', 'participate', 'explore', 'browse', 'filter', 'sort', 'login', 'signup', 'menu', 'nav']
+                        if any(skip in title.lower() for skip in skip_terms):
+                            continue
+                        
+                        # Look for hackathon-related keywords
+                        hackathon_keywords = ['hackathon', 'hack', 'coding', 'tech', 'innovation', 'challenge', 'competition', 'contest']
+                        if not any(keyword in title.lower() for keyword in hackathon_keywords):
+                            continue
+                        
+                        # Try to get URL
+                        url = ""
+                        try:
                             link_elem = card.find_element(By.CSS_SELECTOR, "a")
                             url = link_elem.get_attribute('href')
+                        except:
+                            try:
+                                url = card.get_attribute('href')
+                            except:
+                                pass
+                        
+                        # Validate URL
+                        if url and ('/hackathons/' in url or '/competitions/' in url):
+                            if not url.startswith('http'):
+                                url = f"https://unstop.com{url}"
+                                
+                            hackathons.append({
+                                'title': title,
+                                'url': url,
+                                'source': 'Unstop',
+                                'date_info': 'Check Unstop for dates',
+                                'description': f'Hackathon from Unstop: {title}'
+                            })
+                            print(f"✅ Found Unstop hackathon: {title}")
                             
-                            if url and '/hackathons/' in url:
-                                hackathons.append({
-                                    'title': title,
-                                    'url': url,
-                                    'source': 'Unstop',
-                                    'date_info': 'Check website for dates',
-                                    'description': f'Hackathon from Unstop: {title}'
-                                })
-                    except:
+                    except Exception as e:
                         continue
                         
             except Exception as e:
                 print(f"Error scraping Unstop with Selenium: {e}")
+            
+            # Scrape DevPost with Selenium  
+            try:
+                print("🔍 Scraping DevPost with Selenium...")
+                self.driver.get("https://devpost.com/hackathons")
+                time.sleep(2)  # Reduced wait time
+                
+                # DevPost specific selectors
+                devpost_selectors = [
+                    ".hackathon-tile",
+                    "div[class*='hackathon']",
+                    "div[class*='challenge']", 
+                    "div[class*='tile']"
+                ]
+                
+                cards = []
+                for selector in devpost_selectors:
+                    try:
+                        found = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if found:
+                            cards.extend(found)
+                            print(f"Found {len(found)} DevPost elements with selector: {selector}")
+                    except:
+                        continue
+                
+                cards = list(set(cards))
+                print(f"Total unique DevPost elements: {len(cards)}")
+                
+                processed = 0
+                for card in cards[:5]:  # Reduced from 10 to 5
+                    # Check timeout
+                    if time.time() - start_time > 30:  # Reduced timeout to 30 seconds
+                        print("⏰ Timeout reached, stopping DevPost scraping...")
+                        break
+                        
+                    processed += 1
+                    try:
+                        title = ""
+                        
+                        # Try h3 first (DevPost uses h3 for hackathon titles)
+                        try:
+                            title_elem = card.find_element(By.CSS_SELECTOR, "h3")
+                            title = title_elem.text.strip()
+                            print(f"  Found h3 title: {title}")
+                        except:
+                            # Fallback to other selectors
+                            title_selectors = ["h2", "h1", "h4", ".title", "[class*='title']"]
+                            for t_sel in title_selectors:
+                                try:
+                                    title_elem = card.find_element(By.CSS_SELECTOR, t_sel)
+                                    title = title_elem.text.strip()
+                                    if len(title) > 5:
+                                        print(f"  Found title with {t_sel}: {title}")
+                                        break
+                                except:
+                                    continue
+                        
+                        if not title:
+                            try:
+                                # Get all text and try to extract the title
+                                full_text = card.text.strip()
+                                lines = [line.strip() for line in full_text.split('\n') if line.strip()]
+                                # Usually the hackathon name is one of the longer lines
+                                for line in lines:
+                                    if len(line) > 10 and len(line) < 100:
+                                        if not any(skip in line.lower() for skip in ['online', 'days left', 'prizes', 'participants']):
+                                            title = line
+                                            print(f"  Extracted title from text: {title}")
+                                            break
+                            except:
+                                print(f"  No text found in card {processed}")
+                                continue
+                        
+                        if len(title) < 5 or len(title) > 150:
+                            print(f"  Skipping - title too short/long: {len(title)} chars")
+                            continue
+                            
+                        # Enhanced DevPost filtering - be less aggressive since we found real hackathons
+                        skip_terms = [
+                            'join a hackathon', 'participate in our', 'devpost', 'access your', 
+                            'for teams', 'browse', 'explore', 'see all', 'view more'
+                        ]
+                        if any(term in title.lower() for term in skip_terms):
+                            print(f"  Skipping navigation item: {title[:30]}...")
+                            continue
+                        
+                        # Accept most titles that look like hackathon names
+                        # Real DevPost hackathons usually have descriptive names
+                        if title.lower() in ['hackathons', 'challenges', 'events']:
+                            print(f"  Skipping generic term: {title}")
+                            continue
+                        
+                        # Get URL - DevPost uses specific link structure
+                        url = ""
+                        try:
+                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                            url = link_elem.get_attribute('href')
+                            print(f"  Found URL: {url}")
+                        except:
+                            try:
+                                url = card.get_attribute('href')
+                            except:
+                                print(f"  No URL found for: {title}")
+                                continue
+                        
+                        # DevPost URLs should contain devpost.com
+                        if url and 'devpost.com' in url:
+                            hackathons.append({
+                                'title': title,
+                                'url': url,
+                                'source': 'DevPost',
+                                'date_info': 'Check DevPost for dates', 
+                                'description': f'Hackathon from DevPost: {title}'
+                            })
+                            print(f"✅ Found DevPost hackathon: {title}")
+                        else:
+                            print(f"  Invalid URL for {title}: {url}")
+                            
+                    except Exception as e:
+                        continue
+                        
+            except Exception as e:
+                print(f"Error scraping DevPost with Selenium: {e}")
+            
+            # Scrape MLH with Selenium
+            try:
+                print("🔍 Scraping MLH with Selenium...")
+                self.driver.get("https://mlh.io/events")
+                time.sleep(2)  # Reduced wait time
+                
+                # MLH specific selectors
+                mlh_selectors = [
+                    "div[class*='event']",
+                    "div[class*='hackathon']",
+                    "article",
+                    ".event-card",
+                    "a[href*='/events/']"
+                ]
+                
+                cards = []
+                for selector in mlh_selectors:
+                    try:
+                        found = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if found:
+                            cards.extend(found)
+                            print(f"Found {len(found)} MLH elements with selector: {selector}")
+                    except:
+                        continue
+                
+                cards = list(set(cards))
+                print(f"Total unique MLH elements: {len(cards)}")
+                
+                for card in cards[:10]:
+                    try:
+                        title = ""
+                        title_selectors = ["h1", "h2", "h3", "h4", ".title", "[class*='title']", "a"]
+                        
+                        for t_sel in title_selectors:
+                            try:
+                                title_elem = card.find_element(By.CSS_SELECTOR, t_sel)
+                                title = title_elem.text.strip()
+                                if len(title) > 8:
+                                    break
+                            except:
+                                continue
+                        
+                        if not title:
+                            title = card.text.strip()
+                        
+                        if len(title) < 8 or len(title) > 120:
+                            continue
+                            
+                        # MLH filtering - should be real event names
+                        skip_terms = ['events', 'hackathons', 'mlh', 'major league hacking', 'browse', 'see all']
+                        if any(term in title.lower() for term in skip_terms):
+                            continue
+                        
+                        # Must have hackathon indicators
+                        if not any(word in title.lower() for word in ['hack', 'thon', '2024', '2025', 'hacks']):
+                            continue
+                        
+                        # Get URL
+                        url = ""
+                        try:
+                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                            url = link_elem.get_attribute('href')
+                        except:
+                            try:
+                                url = card.get_attribute('href')
+                            except:
+                                pass
+                        
+                        if url:
+                            if not url.startswith('http'):
+                                url = f"https://mlh.io{url}"
+                                
+                            hackathons.append({
+                                'title': title,
+                                'url': url,
+                                'source': 'MLH',
+                                'date_info': 'Check MLH for dates',
+                                'description': f'Hackathon from MLH: {title}'
+                            })
+                            print(f"✅ Found MLH hackathon: {title}")
+                            
+                    except Exception as e:
+                        continue
+                        
+            except Exception as e:
+                print(f"Error scraping MLH with Selenium: {e}")
             
             # Add hackathons to database
             if hackathons:
