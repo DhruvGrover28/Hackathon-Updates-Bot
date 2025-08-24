@@ -102,86 +102,107 @@ class FastHackathonScraper:
         return hackathons
     
     def scrape_unstop_fast(self):
-        """Fast Unstop scraping - improved targeting"""
+        """Fast Unstop scraping - improved with correct selectors"""
         hackathons = []
         try:
             print("🔍 Unstop scraping...")
             self.driver.get("https://unstop.com/hackathons")
-            time.sleep(3)  # Unstop needs more time to load
+            time.sleep(4)  # Unstop needs time for dynamic loading
             
-            # Unstop uses specific selectors
+            # Based on analysis, Unstop uses these specific patterns
             selectors_to_try = [
-                "div[class*='opportunity-card']",
-                "div[class*='competition-card']", 
-                "div[class*='card']",
-                "article",
-                "a[href*='/hackathons/']"
+                "div[class*='cursor-pointer']",  # Main hackathon cards
+                "[role='button']",  # Clickable cards
+                "div[class*='single_profile']",  # Competition profiles
+                "div[class*='opp_']",  # Opportunity cards (opp_1544012 pattern)
+                "a[href*='/hackathons/']"  # Direct hackathon links
             ]
             
             cards = []
             for selector in selectors_to_try:
                 try:
                     found = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    cards.extend(found)
+                    if found:
+                        cards.extend(found)
+                        print(f"  Found {len(found)} elements with '{selector}'")
                 except:
                     continue
             
             # Remove duplicates
             cards = list(set(cards))
-            print(f"Found {len(cards)} Unstop elements")
+            print(f"Found {len(cards)} total Unstop elements")
             
-            for card in cards[:8]:  # Check more cards for Unstop
+            for card in cards[:12]:  # Check more cards for Unstop
                 try:
-                    # Get title - Unstop uses various structures
+                    # Get text content
+                    card_text = card.text.strip()
+                    if not card_text or len(card_text) < 10:
+                        continue
+                    
+                    # Extract title from the card text
                     title = ""
-                    title_selectors = ["h3", "h2", "h4", ".title", "[class*='title']", "a"]
+                    lines = [line.strip() for line in card_text.split('\n') if line.strip()]
                     
-                    for selector in title_selectors:
-                        try:
-                            title_elem = card.find_element(By.CSS_SELECTOR, selector)
-                            title = title_elem.text.strip()
-                            if len(title) > 8:
-                                break
-                        except:
+                    # Look for the main title (usually first meaningful line)
+                    for line in lines:
+                        # Skip common UI elements
+                        if any(skip in line.lower() for skip in ['registered', 'days left', 'engineering', 'mba', 'student', '₹', 'prize', 'participants']):
                             continue
-                    
-                    if not title:
-                        title = card.text.strip()
-                        # Extract first meaningful line
-                        lines = [line.strip() for line in title.split('\n') if line.strip()]
-                        for line in lines:
-                            if len(line) > 8 and len(line) < 100:
+                        
+                        # Look for hackathon-like titles
+                        if len(line) > 5 and len(line) < 80:
+                            # Check if it contains hackathon keywords or looks like a title
+                            if (any(keyword in line.lower() for keyword in ['hack', 'code', 'tech', 'innovation', 'challenge', 'fest', 'competition']) or
+                                any(char.isdigit() for char in line) and len(line) > 8):
                                 title = line
                                 break
                     
-                    if len(title) < 8 or len(title) > 150:
+                    if not title or len(title) < 5:
                         continue
                     
-                    # Must have hackathon keywords for Unstop
-                    hackathon_keywords = ['hackathon', 'hack', 'coding', 'tech', 'innovation', 'challenge', 'competition']
-                    if not any(keyword in title.lower() for keyword in hackathon_keywords):
-                        continue
-                    
-                    # Skip navigation items
-                    skip_terms = ['browse', 'explore', 'filter', 'sort', 'view all', 'see more', 'login', 'signup']
+                    # Filter out generic terms
+                    skip_terms = ['view all', 'see more', 'browse', 'filter', 'sort', 'engineering students', 'mba student', 'upcoming', 'ongoing']
                     if any(term in title.lower() for term in skip_terms):
                         continue
                     
-                    # Get URL
+                    # Must have hackathon-related keywords
+                    hackathon_keywords = ['hack', 'tech', 'code', 'innovation', 'challenge', 'fest', 'competition', 'ai', 'ml', '2024', '2025', '2026']
+                    if not any(keyword in title.lower() for keyword in hackathon_keywords):
+                        continue
+                    
+                    # Try to get URL
                     url = ""
                     try:
-                        link_elem = card.find_element(By.CSS_SELECTOR, "a")
-                        url = link_elem.get_attribute('href')
+                        # Check if the card itself is a link
+                        url = card.get_attribute('href')
+                        if not url:
+                            # Look for a link inside the card
+                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
+                            url = link_elem.get_attribute('href')
                     except:
+                        # If no direct link, try to construct from card attributes
                         try:
-                            url = card.get_attribute('href')
+                            classes = card.get_attribute('class')
+                            if 'opp_' in classes:
+                                # Extract opportunity ID (e.g., opp_1544012)
+                                import re
+                                match = re.search(r'opp_(\d+)', classes)
+                                if match:
+                                    opp_id = match.group(1)
+                                    # This might be the pattern for Unstop URLs
+                                    url = f"https://unstop.com/hackathons/opportunity_{opp_id}"
                         except:
-                            continue
+                            pass
                     
-                    if url and ('/hackathons/' in url or '/competitions/' in url):
-                        if not url.startswith('http'):
-                            url = f"https://unstop.com{url}"
-                        
+                    # If still no URL, skip this card
+                    if not url:
+                        continue
+                    
+                    if not url.startswith('http'):
+                        url = f"https://unstop.com{url}"
+                    
+                    # Validate it's a hackathon URL
+                    if '/hackathons/' in url or '/competitions/' in url or 'unstop.com' in url:
                         hackathons.append({
                             'title': title,
                             'url': url,
@@ -422,17 +443,23 @@ class FastHackathonScraper:
         print(f"✅ Found {len(all_hackathons)} total hackathons")
         
         if all_hackathons:
-            # Add to database
+            # Add to database and track which ones are actually new
             db = Database()
+            new_hackathons = []
             added_count = 0
+            
             for hackathon in all_hackathons:
                 if db.add_hackathon(hackathon['title'], hackathon['url'], hackathon['date_info'], hackathon['description']):
+                    new_hackathons.append(hackathon)  # Only add if it was actually new
                     added_count += 1
             
             print(f"💾 Added {added_count} new hackathons to database")
             
-            # Send notifications
-            self.send_telegram_notifications(all_hackathons)
+            # Send notifications ONLY for new hackathons
+            if new_hackathons:
+                self.send_telegram_notifications(new_hackathons)
+            else:
+                print("📤 No new hackathons to send (all were duplicates)")
         else:
             print("❌ No hackathons found")
         
