@@ -60,7 +60,7 @@ ENV PYTHONUNBUFFERED=1
 RUN mkdir -p /app/chrome-data && chmod 755 /app/chrome-data
 
 # Create a startup script with proper Chrome flags
-RUN echo '#!/bin/bash\nXvfb :99 -screen 0 1024x768x24 &\nsleep 2\nexec python render_bot.py' > /app/start.sh \
+RUN echo '#!/bin/bash\necho "Starting Hackathon Bot with fast_scraper.py..."\nXvfb :99 -screen 0 1024x768x24 &\nsleep 2\nexec python render_bot.py' > /app/start.sh \
     && chmod +x /app/start.sh
 
 # Expose port
