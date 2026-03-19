@@ -49,7 +49,20 @@ class FastHackathonScraper:
             chrome_options.add_argument("--window-size=1280,720")
             chrome_options.add_argument("--disable-logging")
             chrome_options.add_argument("--log-level=3")
-            chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+            
+            # Additional warning suppression
+            chrome_options.add_argument("--disable-webgl")
+            chrome_options.add_argument("--disable-webgl2")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI,VoiceOver")
+            chrome_options.add_argument("--disable-speech-api")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-gpu-logging")
+            chrome_options.add_argument("--silent")
+            
+            chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
             
             # User data directory for containers (only if in actual container)
             import os
@@ -143,130 +156,124 @@ class FastHackathonScraper:
         return hackathons
     
     def scrape_unstop_fast(self):
-        """Fast Unstop scraping - improved with correct selectors"""
+        """Simplified Unstop scraping - focus on what works"""
         hackathons = []
         try:
             print("🔍 Unstop scraping...")
             self.driver.get("https://unstop.com/hackathons")
-            time.sleep(4)  # Unstop needs time for dynamic loading
+            time.sleep(6)  # Wait longer for dynamic content
             
-            # Based on analysis, Unstop uses these specific patterns
-            selectors_to_try = [
-                "div[class*='cursor-pointer']",  # Main hackathon cards
-                "[role='button']",  # Clickable cards
-                "div[class*='single_profile']",  # Competition profiles
-                "div[class*='opp_']",  # Opportunity cards (opp_1544012 pattern)
-                "a[href*='/hackathons/']"  # Direct hackathon links
-            ]
+            # Scroll to trigger dynamic loading
+            self.driver.execute_script("window.scrollTo(0, 1000);")
+            time.sleep(2)
+            self.driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
             
-            cards = []
-            for selector in selectors_to_try:
-                try:
-                    found = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if found:
-                        cards.extend(found)
-                        print(f"  Found {len(found)} elements with '{selector}'")
-                except:
-                    continue
+            # Try multiple approaches to find hackathon content
+            found_elements = []
+            
+            # Approach 1: Look for any clickable elements with hackathon-related text
+            try:
+                all_clickable = self.driver.find_elements(By.CSS_SELECTOR, "[onclick], [role='button'], a, div[class*='cursor-pointer']")
+                for elem in all_clickable:
+                    text = elem.text.strip().lower()
+                    if any(keyword in text for keyword in ['hack', 'code', 'tech', 'ai', 'ml', 'competition']):
+                        if len(text) > 10 and len(text) < 200:
+                            found_elements.append(elem)
+            except:
+                pass
+            
+            # Approach 2: Look for any elements with hackathon-related URLs
+            try:
+                url_elements = self.driver.find_elements(By.CSS_SELECTOR, "[href*='hackathon'], [href*='competition'], [data-href*='hackathon']")
+                found_elements.extend(url_elements)
+            except:
+                pass
             
             # Remove duplicates
-            cards = list(set(cards))
-            print(f"Found {len(cards)} total Unstop elements")
+            found_elements = list(set(found_elements))
+            print(f"Found {len(found_elements)} potential hackathon elements")
             
-            for card in cards[:12]:  # Check more cards for Unstop
+            # Process found elements
+            for elem in found_elements[:10]:  # Try more elements for better coverage
                 try:
-                    # Get text content
-                    card_text = card.text.strip()
-                    if not card_text or len(card_text) < 10:
+                    # Get title from element text
+                    text = elem.text.strip()
+                    if not text:
                         continue
-                    
-                    # Extract title from the card text
+
+                    # Extract title (first meaningful line)
+                    lines = [line.strip() for line in text.split('\n') if line.strip()]
                     title = ""
-                    lines = [line.strip() for line in card_text.split('\n') if line.strip()]
-                    
-                    # Look for the main title (usually first meaningful line)
                     for line in lines:
-                        # Skip common UI elements
-                        if any(skip in line.lower() for skip in ['registered', 'days left', 'engineering', 'mba', 'student', '₹', 'prize', 'participants']):
+                        # Skip common UI elements and look for titles
+                        if any(skip in line.lower() for skip in ['view', 'more', 'filter', 'sort', 'days left', '₹', 'register']):
                             continue
-                        
-                        # Look for hackathon-like titles
-                        if len(line) > 5 and len(line) < 80:
-                            # Check if it contains hackathon keywords or looks like a title
-                            if (any(keyword in line.lower() for keyword in ['hack', 'code', 'tech', 'innovation', 'challenge', 'fest', 'competition']) or
-                                any(char.isdigit() for char in line) and len(line) > 8):
+                        if len(line) > 8 and len(line) < 100:
+                            if any(keyword in line.lower() for keyword in ['hack', 'code', 'tech', 'ai', 'ml', 'challenge', 'fest', '2024', '2025', '2026']):
                                 title = line
                                 break
-                    
                     if not title or len(title) < 5:
                         continue
-                    
-                    # Filter out generic terms
-                    skip_terms = ['view all', 'see more', 'browse', 'filter', 'sort', 'engineering students', 'mba student', 'upcoming', 'ongoing']
-                    if any(term in title.lower() for term in skip_terms):
-                        continue
-                    
-                    # Must have hackathon-related keywords
-                    hackathon_keywords = ['hack', 'tech', 'code', 'innovation', 'challenge', 'fest', 'competition', 'ai', 'ml', '2024', '2025', '2026']
-                    if not any(keyword in title.lower() for keyword in hackathon_keywords):
-                        continue
-                    
-                    # Try to get URL - prioritize actual href attributes
-                    url = ""
-                    try:
-                        # Check if the card itself is a link
-                        url = card.get_attribute('href')
-                        if not url:
-                            # Look for a link inside the card
-                            link_elem = card.find_element(By.CSS_SELECTOR, "a[href*='/hackathons/']")
-                            url = link_elem.get_attribute('href')
-                        
-                        # If still no URL, try any link in the card
-                        if not url:
-                            link_elem = card.find_element(By.CSS_SELECTOR, "a")
-                            href = link_elem.get_attribute('href')
-                            # Only use if it's actually a hackathon/competition URL
-                            if href and ('/hackathons/' in href or '/competitions/' in href):
-                                url = href
-                    except:
-                        # Last resort: try to find any valid link in the card text
+
+                    # Try to get URL from element, its children, or its parent
+                    url = elem.get_attribute('href') or elem.get_attribute('data-href')
+                    # Try child <a> with hackathon link
+                    if not url:
                         try:
-                            links = card.find_elements(By.CSS_SELECTOR, "a[href]")
-                            for link in links:
-                                href = link.get_attribute('href')
-                                if href and ('/hackathons/' in href or '/competitions/' in href):
-                                    url = href
-                                    break
+                            link_elem = elem.find_element(By.XPATH, ".//a[contains(@href, '/hackathon') or contains(@href, '/competition')]")
+                            url = link_elem.get_attribute('href')
                         except:
                             pass
-                    
-                    # If still no URL, skip this card (don't construct fake URLs)
+                    # Try parent <a> with hackathon link
                     if not url:
+                        try:
+                            parent = elem.find_element(By.XPATH, "..")
+                            if parent:
+                                parent_link = parent.get_attribute('href') or parent.get_attribute('data-href')
+                                if parent_link and ('/hackathon' in parent_link or '/competition' in parent_link):
+                                    url = parent_link
+                        except:
+                            pass
+                    # Only add if we have a real, working URL
+                    if not url or not url.startswith("http") or '/opportunity_' in url:
                         continue
-                    
-                    # Skip URLs with 'opportunity_' pattern as they often return 404
-                    if '/opportunity_' in url:
-                        continue
-                    
-                    if not url.startswith('http'):
-                        url = f"https://unstop.com{url}"
-                    
-                    # Validate it's a hackathon URL
-                    if '/hackathons/' in url or '/competitions/' in url or 'unstop.com' in url:
-                        hackathons.append({
-                            'title': title,
-                            'url': url,
-                            'source': 'Unstop',
-                            'date_info': 'Check Unstop for dates',
-                            'description': f'🚀 {title}\nUnstop\n📅 Date: Check Unstop for dates\n📝 Live from Unstop.com\n🔗 {url}\n#Hackathon #Competition #Tech #Coding'
-                        })
-                        print(f"✅ Found: {title}")
-                        
+
+                    hackathons.append({
+                        'title': title,
+                        'url': url,
+                        'source': 'Unstop',
+                        'date_info': 'Check Unstop for dates',
+                        'description': f'🚀 {title}\nUnstop\n📅 Date: Check Unstop for dates\n📝 From Unstop.com\n🔗 {url}\n#Hackathon #Competition #Tech #Coding'
+                    })
+                    print(f"✅ Found: {title} | {url}")
                 except Exception as e:
                     continue
+            
+            # If we found very few hackathons, add some fallback content
+            if len(hackathons) == 0:
+                print("⚠️  No hackathons found on Unstop - adding fallback")
+                # Add a generic Unstop hackathon entry to encourage users to check
+                hackathons.append({
+                    'title': 'Latest Hackathons on Unstop',
+                    'url': 'https://unstop.com/hackathons',
+                    'source': 'Unstop',
+                    'date_info': 'Various dates available',
+                    'description': '🚀 Latest Hackathons on Unstop\nUnstop\n📅 Date: Various dates available\n📝 Check Unstop.com for the latest hackathons and competitions\n🔗 https://unstop.com/hackathons\n#Hackathon #Competition #Tech #Coding'
+                })
+                print("✅ Added: Latest Hackathons on Unstop (fallback)")
                     
         except Exception as e:
             print(f"Unstop error: {e}")
+            # Even if scraping fails completely, add fallback
+            hackathons.append({
+                'title': 'Check Unstop for Latest Hackathons',
+                'url': 'https://unstop.com/hackathons',
+                'source': 'Unstop',
+                'date_info': 'Various dates',
+                'description': '🚀 Check Unstop for Latest Hackathons\nUnstop\n📅 Date: Various dates\n📝 Visit Unstop.com for hackathons and competitions\n� https://unstop.com/hackathons\n#Hackathon #Competition #Tech #Coding'
+            })
+            print("✅ Added: Check Unstop for Latest Hackathons (error fallback)")
         
         return hackathons
 
@@ -536,8 +543,34 @@ class FastHackathonScraper:
             except Exception as e:
                 print(f"❌ Error sending {hackathon['title']}: {e}")
     
-    def run(self):
-        """Main scraping function with cloud fallback"""
+    def close(self):
+        """Close the driver properly with better error handling"""
+        if hasattr(self, 'driver') and self.driver:
+            try:
+                # Close all windows first
+                for handle in self.driver.window_handles:
+                    try:
+                        self.driver.switch_to.window(handle)
+                        self.driver.close()
+                    except:
+                        pass
+                
+                # Quit the driver
+                self.driver.quit()
+                
+                # Give it a moment to cleanup
+                import time
+                time.sleep(0.5)
+                
+            except Exception as e:
+                # Suppress connection errors during cleanup - they're expected
+                if "No connection could be made" not in str(e):
+                    print(f"Driver cleanup warning: {e}")
+            finally:
+                self.driver = None
+    
+    def scrape_all(self):
+        """Scrape all sources and return hackathons (for direct use with telegram bot)"""
         print("🤖 Fast hackathon scraping started...")
         
         all_hackathons = []
@@ -556,8 +589,7 @@ class FastHackathonScraper:
             devfolio_hackathons = self.scrape_devfolio_fast()
             all_hackathons.extend(devfolio_hackathons)
             
-            if self.driver:
-                self.driver.quit()
+            self.close()
         else:
             print("🌐 Using cloud fallback mode (requests only)")
             
@@ -571,29 +603,26 @@ class FastHackathonScraper:
                 all_hackathons = self.get_emergency_hackathons()
         
         print(f"✅ Found {len(all_hackathons)} total hackathons")
-        
-        if all_hackathons:
-            # Add to database and track which ones are actually new
-            db = Database()
-            new_hackathons = []
-            added_count = 0
-            
-            for hackathon in all_hackathons:
-                if db.add_hackathon(hackathon['title'], hackathon['url'], hackathon['date_info'], hackathon['description']):
-                    new_hackathons.append(hackathon)  # Only add if it was actually new
-                    added_count += 1
-            
-            print(f"💾 Added {added_count} new hackathons to database")
-            
-            # Send notifications ONLY for new hackathons
-            if new_hackathons:
-                self.send_telegram_notifications(new_hackathons)
-            else:
-                print("📤 No new hackathons to send (all were duplicates)")
-        else:
-            print("❌ No hackathons found")
-        
-        print("✅ Fast scraping completed!")
+        return all_hackathons
+    
+    def run(self):
+        """Main scraping function with cloud fallback"""
+        try:
+            all_hackathons = self.scrape_all()
+            if not all_hackathons:
+                print("❌ No hackathons found")
+                return
+
+            # Post using TelegramBot to ensure dedupe and posted flags
+            from telegram_bot import TelegramBot
+            import asyncio
+
+            telegram_bot = TelegramBot()
+            result = asyncio.run(telegram_bot.post_hackathons(all_hackathons))
+            print(f"📤 Posting completed: {result}")
+            print("✅ Fast scraping completed!")
+        except Exception as e:
+            print(f"❌ Fast scraping failed: {e}")
 
 if __name__ == "__main__":
     scraper = FastHackathonScraper()

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from telegram import Bot
 from telegram.error import TelegramError, RetryAfter
 from typing import List, Dict, Optional
@@ -11,10 +12,11 @@ from database import Database
 class TelegramBot:
     """Telegram bot for posting hackathon updates to channels."""
     
-    def __init__(self, token: str, channel_id: str, db: Database, rate_limit: int = 30):
-        self.bot = Bot(token=token)
-        self.channel_id = channel_id
-        self.db = db
+    def __init__(self, token: str = None, channel_id: str = None, db: Database = None, rate_limit: int = 30):
+        # Use environment variables if not provided
+        self.bot = Bot(token=token or os.getenv("TELEGRAM_BOT_TOKEN"))
+        self.channel_id = channel_id or os.getenv("TELEGRAM_CHANNEL_ID")
+        self.db = db or Database()
         self.rate_limit = rate_limit  # messages per minute
         self.last_message_time = 0
         self.message_count = 0
@@ -140,11 +142,27 @@ class TelegramBot:
             logging.error(f"Bot connection test failed: {e}")
             return False
     
-    async def post_hackathons(self, max_posts: int = 5) -> Dict:
-        """Post unposted hackathons to the channel."""
+    async def post_hackathons(self, hackathons_list: List[Dict] = None, max_posts: int = 5) -> Dict:
+        """Post hackathons to the channel. Can use provided list or get from database."""
         logging.info("Starting to post hackathons...")
         
-        unposted_hackathons = self.db.get_unposted_hackathons()
+        if hackathons_list:
+            # Use provided list and add to database first
+            unposted_hackathons = []
+            for hackathon in hackathons_list:
+                # Add to database and get ID
+                hackathon_id = self.db.add_hackathon(
+                    hackathon['title'], 
+                    hackathon['url'], 
+                    hackathon.get('date_info', ''), 
+                    hackathon.get('description', '')
+                )
+                if hackathon_id is not None:  # Only process if it's actually new
+                    hackathon['id'] = hackathon_id
+                    unposted_hackathons.append(hackathon)
+        else:
+            # Get from database
+            unposted_hackathons = self.db.get_unposted_hackathons()
         
         if not unposted_hackathons:
             logging.info("No new hackathons to post")

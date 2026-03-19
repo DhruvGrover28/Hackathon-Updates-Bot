@@ -68,10 +68,12 @@ class Database:
             logging.error(f"Error checking duplicate: {e}")
             return False
     
-    def add_hackathon(self, title: str, url: str, date_info: str = "", description: str = "") -> bool:
-        """Add a new hackathon to the database if it's not a duplicate."""
+    def add_hackathon(self, title: str, url: str, date_info: str = "", description: str = "") -> Optional[int]:
+        """Add a new hackathon to the database if it's not a duplicate.
+        Returns the inserted row id, or None if duplicate/failed.
+        """
         if self.is_duplicate(title, url):
-            return False
+            return None
         
         hash_value = self.generate_hash(title, url)
         
@@ -84,10 +86,10 @@ class Database:
                 ''', (title, url, date_info, description, hash_value))
                 conn.commit()
                 logging.info(f"Added new hackathon: {title}")
-                return True
+                return cursor.lastrowid
         except Exception as e:
             logging.error(f"Error adding hackathon: {e}")
-            return False
+            return None
     
     def get_unposted_hackathons(self) -> List[Dict]:
         """Get hackathons that haven't been posted to Telegram yet."""
