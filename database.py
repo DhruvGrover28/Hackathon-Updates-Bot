@@ -3,6 +3,14 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional
 import hashlib
+import os
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    POSTGRES_AVAILABLE = True
+except Exception:
+    POSTGRES_AVAILABLE = False
 
 
 class Database:
@@ -10,13 +18,46 @@ class Database:
     
     def __init__(self, db_path: str = "hackathons.db"):
         self.db_path = db_path
+        self.database_url = os.getenv("DATABASE_URL")
+        self.use_postgres = bool(self.database_url and POSTGRES_AVAILABLE)
         self.init_database()
     
     def init_database(self):
         """Initialize the database with required tables."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
+
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS hackathons (
+                        id SERIAL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        url TEXT NOT NULL UNIQUE,
+                        date_info TEXT,
+                        description TEXT,
+                        hash TEXT UNIQUE NOT NULL,
+                        posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_posted BOOLEAN DEFAULT FALSE
+                    )
+                ''')
+
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS scraping_log (
+                        id SERIAL PRIMARY KEY,
+                        scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        hackathons_found INTEGER,
+                        new_hackathons INTEGER,
+                        errors TEXT
+                    )
+                ''')
+
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
                 
                 # Create hackathons table
                 cursor.execute('''
@@ -43,7 +84,7 @@ class Database:
                     )
                 ''')
                 
-                conn.commit()
+                    conn.commit()
                 logging.info("Database initialized successfully")
                 
         except Exception as e:
@@ -60,10 +101,19 @@ class Database:
         hash_value = self.generate_hash(title, url)
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
-                cursor.execute("SELECT id FROM hackathons WHERE hash = ?", (hash_value,))
-                return cursor.fetchone() is not None
+                cursor.execute("SELECT id FROM hackathons WHERE hash = %s", (hash_value,))
+                exists = cursor.fetchone() is not None
+                cursor.close()
+                conn.close()
+                return exists
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM hackathons WHERE hash = ?", (hash_value,))
+                    return cursor.fetchone() is not None
         except Exception as e:
             logging.error(f"Error checking duplicate: {e}")
             return False
@@ -78,15 +128,30 @@ class Database:
         hash_value = self.generate_hash(title, url)
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO hackathons (title, url, date_info, description, hash)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                 ''', (title, url, date_info, description, hash_value))
+                new_id = cursor.fetchone()[0]
                 conn.commit()
+                cursor.close()
+                conn.close()
                 logging.info(f"Added new hackathon: {title}")
-                return cursor.lastrowid
+                return new_id
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO hackathons (title, url, date_info, description, hash)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (title, url, date_info, description, hash_value))
+                    conn.commit()
+                    logging.info(f"Added new hackathon: {title}")
+                    return cursor.lastrowid
         except Exception as e:
             logging.error(f"Error adding hackathon: {e}")
             return None
@@ -94,17 +159,31 @@ class Database:
     def get_unposted_hackathons(self) -> List[Dict]:
         """Get hackathons that haven't been posted to Telegram yet."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
                 cursor.execute('''
                     SELECT id, title, url, date_info, description
                     FROM hackathons
                     WHERE is_posted = FALSE
                     ORDER BY id ASC
                 ''')
-                
-                columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+                cursor.close()
+                conn.close()
+                return rows
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT id, title, url, date_info, description
+                        FROM hackathons
+                        WHERE is_posted = FALSE
+                        ORDER BY id ASC
+                    ''')
+                    
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in cursor.fetchall()]
         except Exception as e:
             logging.error(f"Error getting unposted hackathons: {e}")
             return []
@@ -112,15 +191,28 @@ class Database:
     def mark_as_posted(self, hackathon_id: int) -> bool:
         """Mark a hackathon as posted to Telegram."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE hackathons
                     SET is_posted = TRUE
-                    WHERE id = ?
+                    WHERE id = %s
                 ''', (hackathon_id,))
                 conn.commit()
+                cursor.close()
+                conn.close()
                 return True
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE hackathons
+                        SET is_posted = TRUE
+                        WHERE id = ?
+                    ''', (hackathon_id,))
+                    conn.commit()
+                    return True
         except Exception as e:
             logging.error(f"Error marking hackathon as posted: {e}")
             return False
@@ -128,31 +220,40 @@ class Database:
     def log_scraping_session(self, hackathons_found: int, new_hackathons: int, errors: str = "") -> None:
         """Log scraping session statistics."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO scraping_log (hackathons_found, new_hackathons, errors)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                 ''', (hackathons_found, new_hackathons, errors))
                 conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO scraping_log (hackathons_found, new_hackathons, errors)
+                        VALUES (?, ?, ?)
+                    ''', (hackathons_found, new_hackathons, errors))
+                    conn.commit()
         except Exception as e:
             logging.error(f"Error logging scraping session: {e}")
     
     def get_stats(self) -> Dict:
         """Get database statistics."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            if self.use_postgres:
+                conn = psycopg2.connect(self.database_url)
                 cursor = conn.cursor()
-                
-                # Total hackathons
+
                 cursor.execute("SELECT COUNT(*) FROM hackathons")
                 total = cursor.fetchone()[0]
-                
-                # Posted hackathons
+
                 cursor.execute("SELECT COUNT(*) FROM hackathons WHERE is_posted = TRUE")
                 posted = cursor.fetchone()[0]
-                
-                # Recent scraping sessions
+
                 cursor.execute('''
                     SELECT scraped_at, hackathons_found, new_hackathons
                     FROM scraping_log
@@ -160,13 +261,43 @@ class Database:
                     LIMIT 5
                 ''')
                 recent_sessions = cursor.fetchall()
-                
+
+                cursor.close()
+                conn.close()
+
                 return {
                     "total_hackathons": total,
                     "posted_hackathons": posted,
                     "pending_hackathons": total - posted,
                     "recent_sessions": recent_sessions
                 }
+            else:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    
+                    # Total hackathons
+                    cursor.execute("SELECT COUNT(*) FROM hackathons")
+                    total = cursor.fetchone()[0]
+                    
+                    # Posted hackathons
+                    cursor.execute("SELECT COUNT(*) FROM hackathons WHERE is_posted = TRUE")
+                    posted = cursor.fetchone()[0]
+                    
+                    # Recent scraping sessions
+                    cursor.execute('''
+                        SELECT scraped_at, hackathons_found, new_hackathons
+                        FROM scraping_log
+                        ORDER BY scraped_at DESC
+                        LIMIT 5
+                    ''')
+                    recent_sessions = cursor.fetchall()
+                    
+                    return {
+                        "total_hackathons": total,
+                        "posted_hackathons": posted,
+                        "pending_hackathons": total - posted,
+                        "recent_sessions": recent_sessions
+                    }
         except Exception as e:
             logging.error(f"Error getting stats: {e}")
             return {}
