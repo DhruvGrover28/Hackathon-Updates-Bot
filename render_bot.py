@@ -63,25 +63,46 @@ def build_command_bot():
 
     async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "Hi! I post hackathon updates to the channel.\n"
-            "Commands: /help, /status"
+            "Welcome to Hackathon Updates Bot.\n"
+            "I post verified hackathon alerts to @joinhackathonupdates.\n"
+            "Use /help to see all commands."
         )
 
     async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "Commands:\n"
+            "Available commands:\n"
             "/start - welcome message\n"
-            "/help - this help\n"
-            "/status - basic bot status"
+            "/help - list commands\n"
+            "/status - bot status\n"
+            "/join - join the channel\n"
+            "/about - contact and profile links"
         )
 
     async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Bot is running and posting updates.")
+        await update.message.reply_text(
+            "Status: online.\n"
+            "Scraping runs every 6 hours.\n"
+            "Channel: @joinhackathonupdates"
+        )
+
+    async def join_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Join the channel for updates: https://t.me/joinhackathonupdates"
+        )
+
+    async def about_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Maintainer: Dhruv Grover\n"
+            "GitHub: https://github.com/DhruvGrover28\n"
+            "LinkedIn: https://www.linkedin.com/in/dhruv-grover28/"
+        )
 
     app = ApplicationBuilder().token(bot_token).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("status", status_cmd))
+    app.add_handler(CommandHandler("join", join_cmd))
+    app.add_handler(CommandHandler("about", about_cmd))
     return app
 
 def start_scheduler_loop():

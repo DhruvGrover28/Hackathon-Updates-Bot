@@ -87,7 +87,13 @@ class FastHackathonScraper:
                 chrome_options.add_argument("--memory-pressure-off")
                 chrome_options.add_argument("--max_old_space_size=4096")
                 chrome_options.add_argument("--single-process")
-                chrome_options.add_argument("--user-data-dir=/app/chrome-data")
+                # Use a writable temp dir for Chrome profile in containers
+                chrome_data_dir = "/tmp/chrome-data"
+                try:
+                    os.makedirs(chrome_data_dir, exist_ok=True)
+                except Exception:
+                    pass
+                chrome_options.add_argument(f"--user-data-dir={chrome_data_dir}")
                 
                 # Container-specific setup
                 if os.environ.get('CHROME_BIN'):
@@ -132,7 +138,7 @@ class FastHackathonScraper:
                 "devpost",
             ]
 
-            for tile in tiles[:5]:  # Process only first 5
+            for tile in tiles[:8]:  # Process a few more
                 try:
                     # Get title from h3 (this was working)
                     title_elem = tile.find_element(By.CSS_SELECTOR, "h3")
@@ -149,9 +155,15 @@ class FastHackathonScraper:
                     link_elem = tile.find_element(By.CSS_SELECTOR, "a")
                     url = link_elem.get_attribute('href')
 
-                    if not url or '/hackathons/' not in url:
+                    if not url:
                         continue
-                    if url.rstrip('/').endswith('/hackathons'):
+                    if not url.startswith('http'):
+                        url = f"https://devpost.com{url}"
+
+                    # DevPost hackathons are typically under /challenges/
+                    if '/challenges/' not in url:
+                        continue
+                    if url.rstrip('/').endswith('/challenges'):
                         continue
 
                     if url and 'devpost.com' in url:
@@ -471,10 +483,23 @@ class FastHackathonScraper:
                 
                 print(f"Found {len(hackathon_links)} potential DevPost links")
                 
-                for link in hackathon_links[:5]:
+                skip_titles = [
+                    "join a hackathon",
+                    "host a hackathon",
+                    "participate in our public hackathons",
+                    "public hackathons",
+                    "hackathons",
+                    "devpost",
+                ]
+
+                for link in hackathon_links[:8]:
                     try:
                         title = link.get_text(strip=True)
                         if len(title) < 8 or len(title) > 100:
+                            continue
+
+                        title_lower = title.lower().replace(" ", "")
+                        if any(skip.replace(" ", "") in title_lower for skip in skip_titles):
                             continue
                         
                         # Must look like a hackathon title
@@ -482,6 +507,10 @@ class FastHackathonScraper:
                             url = link['href']
                             if not url.startswith('http'):
                                 url = f"https://devpost.com{url}"
+
+                            # Only accept real hackathon challenge URLs
+                            if '/challenges/' not in url or url.rstrip('/').endswith('/challenges'):
+                                continue
                             
                             hackathons.append({
                                 'title': title,
