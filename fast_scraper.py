@@ -128,6 +128,7 @@ class FastHackathonScraper:
                 "join a hackathon",
                 "host a hackathon",
                 "participate in our public hackathons",
+                "public hackathons",
                 "devpost",
             ]
 
@@ -140,8 +141,8 @@ class FastHackathonScraper:
                     if len(title) < 8:
                         continue
 
-                    title_lower = title.lower()
-                    if any(skip in title_lower for skip in skip_titles):
+                    title_lower = title.lower().replace(" ", "")
+                    if any(skip.replace(" ", "") in title_lower for skip in skip_titles):
                         continue
                     
                     # Get URL
@@ -149,6 +150,8 @@ class FastHackathonScraper:
                     url = link_elem.get_attribute('href')
 
                     if not url or '/hackathons/' not in url:
+                        continue
+                    if url.rstrip('/').endswith('/hackathons'):
                         continue
 
                     if url and 'devpost.com' in url:

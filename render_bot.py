@@ -45,48 +45,44 @@ def start_health_server():
     except Exception as e:
         logging.error(f"Health server error: {e}")
 
-def start_command_bot():
-    """Start Telegram DM command bot in a background thread."""
-    try:
-        import asyncio
-        from telegram import Update
-        from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+def build_command_bot():
+    """Build Telegram DM command bot (runs in main thread)."""
+    from telegram import Update
+    from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-        if not bot_token:
-            logging.error("Missing TELEGRAM_BOT_TOKEN for command bot")
-            return
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        logging.error("Missing TELEGRAM_BOT_TOKEN for command bot")
+        return None
 
-        async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "Hi! I post hackathon updates to the channel.\n"
-                "Commands: /help, /status"
-            )
+    async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Hi! I post hackathon updates to the channel.\n"
+            "Commands: /help, /status"
+        )
 
-        async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "Commands:\n"
-                "/start - welcome message\n"
-                "/help - this help\n"
-                "/status - basic bot status"
-            )
+    async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Commands:\n"
+            "/start - welcome message\n"
+            "/help - this help\n"
+            "/status - basic bot status"
+        )
 
-        async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text("Bot is running and posting updates.")
+    async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("Bot is running and posting updates.")
 
-        app = ApplicationBuilder().token(bot_token).build()
-        app.add_handler(CommandHandler("start", start_cmd))
-        app.add_handler(CommandHandler("help", help_cmd))
-        app.add_handler(CommandHandler("status", status_cmd))
+    app = ApplicationBuilder().token(bot_token).build()
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
+    return app
 
-        # Ensure the thread has an event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        logging.info("Command bot polling started")
-        app.run_polling(poll_interval=1, close_loop=True)
-    except Exception as e:
-        logging.error(f"Command bot error: {e}")
+def start_scheduler_loop():
+    """Run scheduler loop in a background thread."""
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
 def run_scraping_and_posting():
     """Run scraping and posting directly"""
@@ -140,10 +136,6 @@ def main():
         health_thread = threading.Thread(target=start_health_server, daemon=True)
         health_thread.start()
 
-        # Start command bot for DM commands
-        command_thread = threading.Thread(target=start_command_bot, daemon=True)
-        command_thread.start()
-        
         # Schedule scraping every N hours (default 6)
         interval_hours = int(os.getenv("SCRAPE_INTERVAL_HOURS", "6"))
         schedule.every(interval_hours).hours.do(run_scraping_and_posting)
@@ -158,11 +150,18 @@ def main():
             logging.error(f"Initial cycle failed: {e}")
             logging.info("Will continue with scheduled cycles...")
         
-        # Main loop
-        logging.info("Bot operational! Running every 6 hours.")
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute
+        # Start scheduler loop in background
+        scheduler_thread = threading.Thread(target=start_scheduler_loop, daemon=True)
+        scheduler_thread.start()
+
+        # Run command bot polling in main thread (required by telegram library)
+        app = build_command_bot()
+        if app is None:
+            logging.error("Command bot not started")
+            return
+
+        logging.info("Command bot polling started")
+        app.run_polling(poll_interval=1, close_loop=True)
             
     except KeyboardInterrupt:
         logging.info("Bot stopped by user")
