@@ -124,6 +124,13 @@ class FastHackathonScraper:
             tiles = self.driver.find_elements(By.CSS_SELECTOR, ".hackathon-tile")
             print(f"Found {len(tiles)} hackathon tiles")
             
+            skip_titles = [
+                "join a hackathon",
+                "host a hackathon",
+                "participate in our public hackathons",
+                "devpost",
+            ]
+
             for tile in tiles[:5]:  # Process only first 5
                 try:
                     # Get title from h3 (this was working)
@@ -132,11 +139,18 @@ class FastHackathonScraper:
                     
                     if len(title) < 8:
                         continue
+
+                    title_lower = title.lower()
+                    if any(skip in title_lower for skip in skip_titles):
+                        continue
                     
                     # Get URL
                     link_elem = tile.find_element(By.CSS_SELECTOR, "a")
                     url = link_elem.get_attribute('href')
-                    
+
+                    if not url or '/hackathons/' not in url:
+                        continue
+
                     if url and 'devpost.com' in url:
                         hackathons.append({
                             'title': title,

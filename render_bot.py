@@ -48,6 +48,7 @@ def start_health_server():
 def start_command_bot():
     """Start Telegram DM command bot in a background thread."""
     try:
+        import asyncio
         from telegram import Update
         from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -78,8 +79,12 @@ def start_command_bot():
         app.add_handler(CommandHandler("help", help_cmd))
         app.add_handler(CommandHandler("status", status_cmd))
 
+        # Ensure the thread has an event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         logging.info("Command bot polling started")
-        app.run_polling(poll_interval=1, close_loop=False)
+        app.run_polling(poll_interval=1, close_loop=True)
     except Exception as e:
         logging.error(f"Command bot error: {e}")
 
