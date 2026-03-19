@@ -31,6 +31,12 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b'OK')
+
+    def do_HEAD(self):
+        """Handle HEAD requests for health check (uptime monitors)."""
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
         
     def log_message(self, format, *args):
         """Suppress default HTTP logging"""
@@ -159,6 +165,11 @@ def main():
         if app is None:
             logging.error("Command bot not started")
             return
+
+        import asyncio
+        # Ensure main thread has an event loop (Py3.12+)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         logging.info("Command bot polling started")
         app.run_polling(poll_interval=1, close_loop=True)
