@@ -95,25 +95,7 @@ Run comprehensive scraping:
 python comprehensive_scraper.py
 ```
 
-## Deployment
 
-### Railway (Recommended)
-
-1. Create account at railway.app
-2. Connect your GitHub repository
-3. Add environment variables in Railway dashboard
-4. Deploy automatically from main branch
-
-### Heroku
-
-1. Install Heroku CLI
-2. Create new Heroku app
-3. Set environment variables
-4. Deploy using Git:
-```bash
-heroku git:remote -a your-app-name
-git push heroku main
-```
 
 ### Other Platforms
 
